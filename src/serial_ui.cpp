@@ -29,12 +29,22 @@ static void printSpeed(const char *label, const Reading &reading) {
   }
 }
 
+static void printCoolant() {
+  if (coolant.fresh()) {
+    Serial.printf(" | coolant %5.1f C", coolant.value);
+  } else {
+    Serial.print(" | coolant    --");
+  }
+}
+
 static void printLive() {
   printRpm();
   printSpeed("12B front", front12B);
   printSpeed("12B rear", rear12B);
   printSpeed("12D rear", rear12D);
-  Serial.println(" km/h");
+  Serial.print(" km/h");
+  printCoolant();
+  Serial.println();
 }
 
 static void printStatus() {
