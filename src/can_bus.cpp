@@ -2,8 +2,7 @@
 
 #include <string.h>
 
-// 500 kbit/s is confirmed on the 2026 Adventure 390. If the status line shows
-// bus errors and no frames, try TWAI_TIMING_CONFIG_250KBITS().
+// 500 kbit/s is confirmed
 #define CAN_TIMING TWAI_TIMING_CONFIG_500KBITS()
 
 Reading rpm;
