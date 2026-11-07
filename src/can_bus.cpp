@@ -9,6 +9,7 @@ Reading rpm;
 Reading front12B;
 Reading rear12B;
 Reading rear12D;
+Reading coolant;
 
 IdEntry idTable[MAX_IDS];
 int idCount = 0;
@@ -42,6 +43,12 @@ static void decodeFrame(const twai_message_t &msg) {
     case 0x12D:  // D1-D2: rear wheel
       if (msg.data_length_code >= 3) {
         rear12D.set(be16(msg.data, 1) * SCALE_12D_KMH);
+      }
+      break;
+
+    case 0x540:  // D6-D7: coolant temperature, 0.1 C per count
+      if (msg.data_length_code >= 8) {
+        coolant.set(be16(msg.data, 6) / 10.0f);
       }
       break;
   }

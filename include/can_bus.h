@@ -45,6 +45,7 @@ extern Reading rpm;
 extern Reading front12B;
 extern Reading rear12B;
 extern Reading rear12D;
+extern Reading coolant;
 
 // ---------- Table of every ID on the bus -------------------------------------
 
