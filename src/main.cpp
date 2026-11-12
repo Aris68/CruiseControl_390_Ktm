@@ -7,6 +7,7 @@
   Files:
     can_bus    TWAI driver, frame decoding, table of every CAN ID
     serial_ui  Serial Monitor output and commands
+    console    output to USB serial and to a telnet client over Wi-Fi
 
   THE CAN IDs ARE NOT CONFIRMED ON THE 2020 BIKE.
   They come from other KTMs:
@@ -19,6 +20,10 @@
   Serial Monitor commands (send the letter, then Enter):
     i  print every CAN ID seen. '*' marks bytes that changed since the last 'i'
     l  turn the live RPM/speed lines on or off
+
+  Wireless: the board runs a Wi-Fi network "KTM390-CAN" (password in
+  console.h). Join it and telnet to 192.168.4.1 port 23 for the same output
+  and commands as the Serial Monitor.
 
   USB: with "USB CDC On Boot" disabled, use the port marked UART
        (with it enabled, use the other USB port).
@@ -37,25 +42,26 @@
 
 #include <Arduino.h>
 #include "can_bus.h"
+#include "console.h"
 #include "serial_ui.h"
 
 void setup() {
-  Serial.begin(115200);
-  delay(500);
-  Serial.println("KTM 390 CAN reader, listen-only");
+  consoleSetup();
+  console.println("KTM 390 CAN reader, listen-only");
 
   if (!canSetup()) {
-    Serial.println("TWAI start failed. Check the board selection and pins.");
+    console.println("TWAI start failed. Check the board selection and pins.");
     while (true) {
       delay(1000);
     }
   }
 
-  Serial.println("Listening. Send i for the ID table, l for live on/off.");
+  console.println("Listening. Send i for the ID table, l for live on/off.");
   uiSetup();
 }
 
 void loop() {
   canPoll();
+  consoleUpdate();
   uiUpdate();
 }
