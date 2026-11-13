@@ -11,6 +11,18 @@ Reading rear12B;
 Reading rear12D;
 Reading coolant;
 
+Reading throttle;
+Reading killRun;
+Reading startButton;
+Reading throttleClosed;
+Reading gear;
+Reading clutch;
+Reading tractionControl;
+Reading frontBrake;
+Reading brakeLight;
+Reading sideStand;
+Reading odometer;
+
 IdEntry idTable[MAX_IDS];
 int idCount = 0;
 bool idTableFull = false;
@@ -26,10 +38,55 @@ static uint16_t be16(const uint8_t *data, int index) {
 static void decodeFrame(const twai_message_t &msg) {
   if (msg.extd) return;  // the known KTM IDs are all 11-bit
 
+  const uint8_t *d = msg.data;
+  const int length = msg.data_length_code;
+
   switch (msg.identifier) {
     case 0x120:  // D0-D1: engine speed, 1 rpm per count
-      if (msg.data_length_code >= 2) {
-        rpm.set(be16(msg.data, 0));
+      if (length >= 2) {
+        rpm.set(be16(d, 0));
+      }
+      if (length >= 3) {
+        throttle.set(d[2]);
+      }
+      if (length >= 4) {
+        killRun.set((d[3] & 0x08) ? 1 : 0);
+        startButton.set((d[3] & 0x10) ? 1 : 0);
+      }
+      break;
+
+    case 0x128:  // D2: 03 grip closed, 02 open
+      if (length >= 3) {
+        throttleClosed.set(d[2] & 0x01);
+      }
+      break;
+
+    case 0x129:  // D0 high nibble: gear, D0 bit 3: clutch lever
+      if (length >= 1) {
+        gear.set(d[0] >> 4);
+        clutch.set((d[0] & 0x08) ? 1 : 0);
+      }
+      break;
+
+    case 0x12A:  // D1: traction control
+      if (length >= 2) {
+        tractionControl.set(d[1]);
+      }
+      break;
+
+    case 0x290:  // D0-D1: front brake pressure, D3: brake light
+      if (length >= 2) {
+        frontBrake.set(be16(d, 0));
+      }
+      if (length >= 4) {
+        brakeLight.set(d[3]);
+      }
+      break;
+
+    case 0x55A:  // D0-D2: odometer, 24-bit, 0.1 km per count
+      if (length >= 3) {
+        uint32_t counts = ((uint32_t)d[0] << 16) | ((uint32_t)d[1] << 8) | d[2];
+        odometer.set(counts / 10.0f);
       }
       break;
 
@@ -46,8 +103,11 @@ static void decodeFrame(const twai_message_t &msg) {
       }
       break;
 
-    case 0x540:  // D6-D7: coolant temperature, 0.1 C per count
-      if (msg.data_length_code >= 8) {
+    case 0x540:  // D3 bit 0: side stand, D6-D7: coolant temperature, 0.1 C per count
+      if (length >= 4) {
+        sideStand.set(d[3] & 0x01);
+      }
+      if (length >= 8) {
         coolant.set(be16(msg.data, 6) / 10.0f);
       }
       break;
