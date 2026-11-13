@@ -36,8 +36,8 @@ struct Reading {
     seen = true;
   }
 
-  bool fresh() const {
-    return seen && (millis() - atMs) < STALE_MS;
+  bool fresh(uint32_t maxAgeMs = STALE_MS) const {
+    return seen && (millis() - atMs) < maxAgeMs;
   }
 };
 
@@ -46,6 +46,24 @@ extern Reading front12B;
 extern Reading rear12B;
 extern Reading rear12D;
 extern Reading coolant;
+
+// High-certainty signals, see CAN_CODES.md. Switches hold 0 or 1.
+extern Reading throttle;         // 0x120 D2: 0 closed .. 253 open
+extern Reading killRun;          // 0x120 D3 bit 0x08: 1 = RUN
+extern Reading startButton;      // 0x120 D3 bit 0x10: 1 while pressed
+extern Reading throttleClosed;   // 0x128 D2 bit 0x01: 1 = grip closed
+extern Reading gear;             // 0x129 D0 bits 4-7
+extern Reading clutch;           // 0x129 D0 bit 0x08, raw bit
+extern Reading tractionControl;  // 0x12A D1, raw byte: TC_ON or TC_OFF
+extern Reading frontBrake;       // 0x290 D0-D1, raw pressure counts
+extern Reading brakeLight;       // 0x290 D3, raw byte: BRAKE_LIGHT_ON or _OFF
+extern Reading sideStand;        // 0x540 D3 bit 0x01: 1 = up
+extern Reading odometer;         // 0x55A D0-D2, km
+
+const uint8_t TC_ON           = 0x28;
+const uint8_t TC_OFF          = 0x18;
+const uint8_t BRAKE_LIGHT_ON  = 0x0E;  // confirmed for the front lever only
+const uint8_t BRAKE_LIGHT_OFF = 0x02;
 
 // ---------- Table of every ID on the bus -------------------------------------
 
