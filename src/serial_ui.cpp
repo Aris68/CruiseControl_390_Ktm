@@ -9,7 +9,6 @@ static const uint32_t STATUS_PERIOD_MS = 20000;  // bus health line
 
 static uint32_t lastLiveMs = 0;
 static uint32_t lastStatusMs = 0;
-static uint32_t lastTablePrintMs = 0;
 static uint32_t framesAtLastStatus = 0;
 static uint32_t busErrorsAtLastStatus = 0;
 static bool liveOutput = true;
@@ -76,59 +75,19 @@ static void printStatus() {
   }
 
   // The hint is padded to the longest one, so the length never changes.
-  console.printf("[bus] %5lu frames/s, %2d IDs, bus errors %7lu, lost %7lu%-65s",
-                 capped(newFrames * 1000 / STATUS_PERIOD_MS, 99999), idCount,
+  console.printf("[bus] %5lu frames/s, bus errors %7lu, lost %7lu%-65s",
+                 capped(newFrames * 1000 / STATUS_PERIOD_MS, 99999),
                  capped(status.bus_error_count, 9999999),
                  capped(status.rx_missed_count + status.rx_overrun_count, 9999999),
                  hint);
 }
 
-// ---------- ID table ('i') ---------------------------------------------------
-
-static void printIdTable() {
-  uint32_t now = millis();
-  uint32_t elapsedMs = now - lastTablePrintMs;
-  lastTablePrintMs = now;
-
-  console.printf("\n--- %d IDs, * = changed since the last table ---\n", idCount);
-  console.println("ID    rate  D0  D1  D2  D3  D4  D5  D6  D7");
-
-  for (int i = 0; i < idCount; i++) {
-    IdEntry &entry = idTable[i];
-    uint32_t rate = elapsedMs ? (entry.count - entry.countAtLastPrint) * 1000 / elapsedMs : 0;
-
-    console.printf("%03lX %4lu/s ", (unsigned long)entry.id, capped(rate, 9999));
-    for (int b = 0; b < 8; b++) {
-      if (b < entry.dlc) {
-        console.printf("%02X%c ", entry.data[b], (entry.changed & (1 << b)) ? '*' : ' ');
-      } else {
-        console.print("    ");  // short frame: pad to 8 bytes
-      }
-    }
-    console.println();
-
-    entry.countAtLastPrint = entry.count;
-    entry.changed = 0;
-  }
-
-  if (idTableFull) {
-    console.println("Table full: raise MAX_IDS to see the remaining IDs");
-  }
-  console.println();
-}
-
 // ---------- Public functions -------------------------------------------------
-
-void uiSetup() {
-  lastTablePrintMs = millis();
-}
 
 void uiUpdate() {
   int command;
   while ((command = console.read()) >= 0) {
-    if (command == 'i') {
-      printIdTable();
-    } else if (command == 'l') {
+    if (command == 'l') {
       liveOutput = !liveOutput;
       console.println(liveOutput ? "Live output on " : "Live output off");
     }

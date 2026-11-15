@@ -7,17 +7,15 @@
                front/rear brake, side stand
 
   Files:
-    can_bus    TWAI driver, frame decoding, table of every CAN ID
+    can_bus    TWAI driver and frame decoding
     serial_ui  Serial Monitor output and commands
     console    output to USB serial and to a telnet client over Wi-Fi
 
   CAN IDs and bits are listed in CAN_CODES.md. Wheel speed (0x12D) uses a
   guessed scale: calibrate SCALE_12D_KMH in can_bus.h against GPS.
-  To find a new signal, use the ID table (command 'i'), then edit
-  decodeFrame() in can_bus.cpp.
+  To add a signal, edit decodeFrame() in can_bus.cpp.
 
   Serial Monitor commands (send the letter, then Enter):
-    i  print every CAN ID seen. '*' marks bytes that changed since the last 'i'
     l  turn the live line on or off
 
   Wireless: the board runs a Wi-Fi network "KTM390-CAN" (password in
@@ -55,8 +53,7 @@ void setup() {
     }
   }
 
-  console.println("Listening. Send i for the ID table, l for live on/off.");
-  uiSetup();
+  console.println("Listening. Send l for live on/off.");
 }
 
 void loop() {

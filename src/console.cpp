@@ -26,8 +26,8 @@ static void dropClient() {
 
 // ---------- Output -----------------------------------------------------------
 
-// Wi-Fi output is collected here and sent once per loop, so a long print such
-// as the ID table goes out in a few packets instead of hundreds.
+// Wi-Fi output is collected here and sent once per loop, so several prints in
+// one loop go out in one packet instead of many.
 static uint8_t txBuffer[4096];
 
 static void flushTelnet() {
@@ -145,6 +145,6 @@ void consoleUpdate() {
     clientActive = true;
     telnetState = TEXT;
     console.println("[wifi] telnet client connected");
-    console.println("KTM 390 CAN reader. Send i for the ID table, l for live on/off.");
+    console.println("KTM 390 CAN reader. Send l for live on/off.");
   }
 }

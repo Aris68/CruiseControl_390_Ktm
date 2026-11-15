@@ -1,5 +1,4 @@
-// CAN bus: TWAI driver in listen-only mode, frame decoding, and a table of
-// every ID seen on the bus.
+// CAN bus: TWAI driver in listen-only mode and frame decoding.
 #pragma once
 
 #include <Arduino.h>
@@ -18,7 +17,6 @@ const gpio_num_t CAN_RX_PIN = GPIO_NUM_3;
 const float SCALE_12D_KMH = 0.1f;  // 2026 Adventure 390: a guess
 
 const uint32_t STALE_MS = 500;  // a value older than this is not fresh
-const int      MAX_IDS  = 64;   // size of the ID table
 
 // ---------- Decoded values ---------------------------------------------------
 
@@ -52,21 +50,7 @@ extern Reading frontBrake;       // 0x290 D0: 1 = pressed (pressure above 0)
 extern Reading rearBrake;        // 0x12F D1 bit 0x40: 1 = pressed
 extern Reading sideStand;        // 0x540 D3 bit 0x01: 1 = up
 
-// ---------- Table of every ID on the bus -------------------------------------
-
-struct IdEntry {
-  uint32_t id;
-  uint32_t count;
-  uint32_t countAtLastPrint;
-  uint8_t dlc;
-  uint8_t data[8];
-  uint8_t changed;  // one bit per byte, set if it changed since the last print
-};
-
-extern IdEntry idTable[MAX_IDS];
-extern int idCount;
-extern bool idTableFull;
-extern uint32_t totalFrames;
+extern uint32_t totalFrames;  // data frames received, for the bus health line
 
 // ---------- Functions --------------------------------------------------------
 

@@ -6,7 +6,7 @@
 //   2. Open a telnet connection to 192.168.4.1, port 23.
 //      Windows: PuTTY, connection type "Telnet" (or "Raw").
 //      Phone:   any telnet / TCP terminal app.
-//   3. Type the same commands as in the Serial Monitor (i, l).
+//   3. Type the same command as in the Serial Monitor (l).
 // One client at a time. A new connection replaces the old one.
 #pragma once
 

@@ -1,7 +1,5 @@
 #include "can_bus.h"
 
-#include <string.h>
-
 // 500 kbit/s is confirmed
 #define CAN_TIMING TWAI_TIMING_CONFIG_500KBITS()
 
@@ -16,9 +14,6 @@ Reading frontBrake;
 Reading rearBrake;
 Reading sideStand;
 
-IdEntry idTable[MAX_IDS];
-int idCount = 0;
-bool idTableFull = false;
 uint32_t totalFrames = 0;
 
 // ---------- Frame handling ---------------------------------------------------
@@ -77,47 +72,10 @@ static void decodeFrame(const twai_message_t &msg) {
   }
 }
 
-static void updateIdTable(const twai_message_t &msg) {
-  int slot = -1;
-  for (int i = 0; i < idCount; i++) {
-    if (idTable[i].id == msg.identifier) {
-      slot = i;
-      break;
-    }
-  }
-
-  if (slot < 0) {
-    if (idCount >= MAX_IDS) {
-      idTableFull = true;
-      return;
-    }
-    slot = idCount++;
-    idTable[slot] = IdEntry{};
-    idTable[slot].id = msg.identifier;
-  }
-
-  IdEntry &entry = idTable[slot];
-  int length = min((int)msg.data_length_code, 8);
-
-  // The first frame of an ID is the baseline, not a change.
-  if (entry.count > 0) {
-    for (int i = 0; i < length; i++) {
-      if (entry.data[i] != msg.data[i]) {
-        entry.changed |= (1 << i);
-      }
-    }
-  }
-
-  memcpy(entry.data, msg.data, length);
-  entry.dlc = length;
-  entry.count++;
-}
-
 static void handleFrame(const twai_message_t &msg) {
   if (msg.rtr) return;  // remote frames carry no data
 
   totalFrames++;
-  updateIdTable(msg);
   decodeFrame(msg);
 }
 
