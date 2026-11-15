@@ -1,15 +1,14 @@
 #include "serial_ui.h"
 
 #include <Arduino.h>
-#include <string.h>
 #include "can_bus.h"
 #include "console.h"
 
 static const uint32_t LIVE_PERIOD_MS   = 200;   // RPM/speed lines, 5 per second
-static const uint32_t STATUS_PERIOD_MS = 2000;  // bus health line
+static const uint32_t STATUS_PERIOD_MS = 20000;  // bus health line
 
 // 0x55A is a slow frame, so the odometer gets a longer freshness window.
-static const uint32_t ODOMETER_STALE_MS = 5000;
+static const uint32_t ODOMETER_STALE_MS = 50000;
 
 static uint32_t framesAtLastStatus = 0;
 static uint32_t busErrorsAtLastStatus = 0;
@@ -26,6 +25,8 @@ static bool liveOutput = true;
 static void printField(const char *label, const char *text, int width) {
   console.printf(" | %s %*s", label, width, text);
 }
+
+// Readings print as raw numbers: switch bits as 0 or 1, whole bytes in hex.
 
 // A numeric reading, formatted with fmt (e.g. "%.1f"), or "--" if stale.
 static void printValue(const char *label, const Reading &reading,
@@ -51,30 +52,11 @@ static void printCoolant() {
   console.print(" C");
 }
 
-// Prints the text for the switch state, or "--" if stale.
-static void printSwitch(const char *label, const Reading &reading,
-                        const char *whenOne, const char *whenZero) {
-  int width = max(max(strlen(whenOne), strlen(whenZero)), (size_t)2);
-  const char *text = "--";
-  if (reading.fresh()) text = reading.value != 0 ? whenOne : whenZero;
-  printField(label, text, width);
-}
-
-// For a byte with two known values. Anything else is printed in hex.
-static void printByteState(const char *label, const Reading &reading,
-                           uint8_t onValue, uint8_t offValue) {
+// A whole byte, printed in hex (e.g. 0x3C), or "--" if stale.
+static void printHexByte(const char *label, const Reading &reading) {
   char text[8] = "--";
-  if (reading.fresh()) {
-    uint8_t raw = (uint8_t)reading.value;
-    if (raw == onValue) {
-      strcpy(text, "on");
-    } else if (raw == offValue) {
-      strcpy(text, "off");
-    } else {
-      snprintf(text, sizeof(text), "0x%02X", raw);
-    }
-  }
-  printField(label, text, 4);  // widest is "0xNN"
+  if (reading.fresh()) snprintf(text, sizeof(text), "0x%02X", (uint8_t)reading.value);
+  printField(label, text, 4);
 }
 
 static void printNumber(const char *label, const Reading &reading, int width) {
@@ -85,21 +67,22 @@ static void printNumber(const char *label, const Reading &reading, int width) {
 static void printSignals() {
   char text[8] = "--";
   if (throttle.fresh()) snprintf(text, sizeof(text), "%.0f", throttle.value);
-  console.printf("thr %3s", text);  // one byte: up to 255
-  printSwitch("grip", throttleClosed, "closed", "open");
-  printNumber("gear", gear, 2);      // 4 bits: up to 15
-  printNumber("clutch", clutch, 2);  // raw bit: which state means "pulled" is not recorded
-  printSwitch("kill", killRun, "RUN", "STOP");
-  printSwitch("start", startButton, "pressed", "-");
-  printByteState("TC", tractionControl, TC_ON, TC_OFF);
-  printNumber("brake", frontBrake, 5);  // 16-bit: up to 65535
-  printByteState("light", brakeLight, BRAKE_LIGHT_ON, BRAKE_LIGHT_OFF);
-  printSwitch("stand", sideStand, "up", "down");
+    console.printf("thr %3s", text);  // one byte: up to 255
+  printNumber("grip", throttleClosed, 2);  // bit
+  printNumber("clutch", clutch, 2);        // bit
+  printNumber("kill", killRun, 2);         // bit
+  printNumber("start", startButton, 2);    // bit
+  printNumber("stand", sideStand, 2);      // bit
+  printHexByte("TC", tractionControl);     // byte
+  printHexByte("light", brakeLight);       // byte
+  printNumber("gear", gear, 2);            // 4 bits: up to 15
+  printNumber("brake", frontBrake, 5);     // 16-bit: up to 65535
 
   char odo[16] = "--";
   if (odometer.fresh(ODOMETER_STALE_MS)) {
     snprintf(odo, sizeof(odo), "%.1f", odometer.value);
   }
+
   printField("odo", odo, 9);  // 24-bit / 10: up to 1677721.5
   console.print(" km");
   console.println();
@@ -206,8 +189,8 @@ void uiUpdate() {
     console.println();
     printLive();
   }
-  // if (now - lastStatusMs >= STATUS_PERIOD_MS) {
-  //   lastStatusMs = now;
-  //   printStatus();
-  // }
+  if (now - lastStatusMs >= STATUS_PERIOD_MS) {
+    lastStatusMs = now;
+    printStatus();
+  }
 }

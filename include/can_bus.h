@@ -60,10 +60,6 @@ extern Reading brakeLight;       // 0x290 D3, raw byte: BRAKE_LIGHT_ON or _OFF
 extern Reading sideStand;        // 0x540 D3 bit 0x01: 1 = up
 extern Reading odometer;         // 0x55A D0-D2, km
 
-const uint8_t TC_ON           = 0x28;
-const uint8_t TC_OFF          = 0x18;
-const uint8_t BRAKE_LIGHT_ON  = 0x0E;  // confirmed for the front lever only
-const uint8_t BRAKE_LIGHT_OFF = 0x02;
 
 // ---------- Table of every ID on the bus -------------------------------------
 
