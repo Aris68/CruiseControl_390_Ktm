@@ -15,7 +15,6 @@ const gpio_num_t CAN_RX_PIN = GPIO_NUM_3;
 
 // Starting values. Calibrate against GPS at a steady speed:
 //   new scale = old scale * (GPS speed / printed speed)
-const float SCALE_12B_KMH = 0.05627f;  // 701 Enduro: 17.77 counts per km/h
 const float SCALE_12D_KMH = 0.1f;      // 2026 Adventure 390: a guess
 
 const uint32_t STALE_MS = 500;  // a value older than this is not fresh
@@ -42,12 +41,8 @@ struct Reading {
 };
 
 extern Reading rpm;
-extern Reading front12B;
-extern Reading rear12B;
 extern Reading rear12D;
 extern Reading coolant;
-
-// High-certainty signals, see CAN_CODES.md. Switches hold 0 or 1.
 extern Reading throttle;         // 0x120 D2: 0 closed .. 253 open
 extern Reading killRun;          // 0x120 D3 bit 0x08: 1 = RUN
 extern Reading startButton;      // 0x120 D3 bit 0x10: 1 while pressed
