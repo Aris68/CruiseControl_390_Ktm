@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include "can_bus.h"
 #include "console.h"
+#include "signal_finder.h"
 
 static const uint32_t LIVE_PERIOD_MS   = 200;   // RPM/speed lines, 5 per second
 static const uint32_t STATUS_PERIOD_MS = 20000;  // bus health line
@@ -166,7 +167,11 @@ static void printIdTable() {
 static void handleCommand() {
   int command;
   while ((command = console.read()) >= 0) {
-    if (command == 'i') {
+    if (finderActive()) {
+      finderInput(command);  // the guided test owns the keyboard
+    } else if (command == 't') {
+      finderStart();
+    } else if (command == 'i') {
       printIdTable();
     } else if (command == 'l') {
       liveOutput = !liveOutput;
@@ -182,6 +187,10 @@ void uiSetup() {
 void uiUpdate() {
 
   handleCommand();
+  finderUpdate();
+
+  // The guided test needs a quiet screen.
+  if (finderActive()) return;
 
   uint32_t now = millis();
   if (liveOutput && now - lastLiveMs >= LIVE_PERIOD_MS) {

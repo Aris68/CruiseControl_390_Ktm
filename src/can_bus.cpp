@@ -1,6 +1,7 @@
 #include "can_bus.h"
 
 #include <string.h>
+#include "signal_finder.h"
 
 // 500 kbit/s is confirmed
 #define CAN_TIMING TWAI_TIMING_CONFIG_500KBITS()
@@ -114,7 +115,8 @@ static void decodeFrame(const twai_message_t &msg) {
   }
 }
 
-static void updateIdTable(const twai_message_t &msg) {
+// Returns the frame's slot in idTable, or -1 if the table is full.
+static int updateIdTable(const twai_message_t &msg) {
   int slot = -1;
   for (int i = 0; i < idCount; i++) {
     if (idTable[i].id == msg.identifier) {
@@ -126,7 +128,7 @@ static void updateIdTable(const twai_message_t &msg) {
   if (slot < 0) {
     if (idCount >= MAX_IDS) {
       idTableFull = true;
-      return;
+      return -1;
     }
     slot = idCount++;
     idTable[slot] = IdEntry{};
@@ -148,14 +150,16 @@ static void updateIdTable(const twai_message_t &msg) {
   memcpy(entry.data, msg.data, length);
   entry.dlc = length;
   entry.count++;
+  return slot;
 }
 
 static void handleFrame(const twai_message_t &msg) {
   if (msg.rtr) return;  // remote frames carry no data
 
   totalFrames++;
-  updateIdTable(msg);
+  int slot = updateIdTable(msg);
   decodeFrame(msg);
+  finderOnFrame(slot, msg);
 }
 
 // ---------- Public functions -------------------------------------------------

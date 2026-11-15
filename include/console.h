@@ -34,5 +34,9 @@ extern Console console;
 // Starts USB serial and the Wi-Fi access point.
 void consoleSetup();
 
+// Bytes waiting to go out over Wi-Fi. Long prints can wait for this to drop,
+// because text that does not fit the buffer is discarded.
+size_t consolePending();
+
 // Accepts new telnet clients and notices dropped ones. Call it every loop.
 void consoleUpdate();
