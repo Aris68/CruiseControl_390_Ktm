@@ -16,3 +16,4 @@ Source: `KTM390_CAN_signal_map.xlsx`. Multi-byte values are big-endian.
 | 0x290 | D3           | Brake light (front lever only) | 02 off, 0E on           |Definetely Wrong                             |
 | 0x540 | D3 bit 0x01  | Side stand                     | 1 = up                  |Verified                                     |
 | 0x55A | D0–D2        | Odometer                       | 24-bit ÷ 10 = km        |            Wrong                            |
+| 0x12D | D1–D2        | Rear wheel speed               | 16-bit ÷ some scale = km |Verified                                    |

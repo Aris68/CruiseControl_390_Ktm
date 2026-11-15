@@ -1,9 +1,45 @@
-#include "signal_finder.h"
+/*
+  Signal finder: a guided test that tells you what to press on the bike and
+  works out which CAN ID, byte and bits follow that control.
+
+  This is a separate test firmware. It lives in test/ and changes nothing in
+  src/. It only borrows two things from the main program, unmodified:
+    src/console.cpp   the Wi-Fi telnet + USB console
+    include/can_bus.h the CAN pin numbers
+  Like the main program it is listen-only and never transmits.
+
+  Build and flash it instead of the main firmware:
+    pio run -e signal_finder -t upload
+  Go back to the main firmware:
+    pio run -e esp32-c6-devkitm-1 -t upload
+
+  Use it: join the Wi-Fi network from console.h, telnet to 192.168.4.1 port 23
+  (or open the USB serial monitor) and send t.
+
+  How a step works:
+    The control is alternated between a rest state and an active state
+    (released / held, OFF / ON, mode A / mode B). Every frame is sorted into
+    "rest" or "active" samples, leaving out the moments right after each
+    change. Then every bit of every byte of every ID is checked:
+
+    STRONG  the bit never moved during rest, never moved during active, and
+            has a different value in the two. This is the signal, or a
+            checksum/copy that follows it.
+    ANALOG  the byte's value range during active does not overlap its range
+            during rest (pressure, throttle position, ...).
+    PULSE   the bit is steady at rest and moved at some point during the
+            action (a button that only sends a short event, a blinker).
+*/
 
 #include <Arduino.h>
 #include <string.h>
-#include "can_bus.h"
+#include "driver/twai.h"
+#include "can_bus.h"   // CAN_TX_PIN, CAN_RX_PIN, MAX_IDS only
 #include "console.h"
+
+// Every ID seen on the bus. A frame's position here is its slot in stats[].
+static uint32_t seenIds[MAX_IDS];
+static int seenCount = 0;
 
 // ---------- Timing -----------------------------------------------------------
 
@@ -198,9 +234,9 @@ static void analyse(int stepIndex) {
     }
   };
 
-  for (int i = 0; i < idCount; i++) {
+  for (int i = 0; i < seenCount; i++) {
     const Stat &s = stats[i];
-    uint16_t id = (uint16_t)idTable[i].id;
+    uint16_t id = (uint16_t)seenIds[i];
 
     if (s.restCount == 0 && s.actCount == 0 && s.anyCount == 0) continue;
     if (s.restCount == 0) {
@@ -297,9 +333,10 @@ static void stopSampling() {
 }
 
 // The summary lists every finding of every step. That is far more text than
-// the Wi-Fi buffer holds, so it goes out one line per loop, and only while the
-// buffer has room. Nothing is dropped on a slow link.
-static const size_t SUMMARY_MAX_PENDING = 1024;
+// the Wi-Fi buffer holds, so it goes out a line at a time. That
+// rate is far below what the link carries.
+static const uint32_t SUMMARY_LINE_MS = 15;
+static uint32_t lastSummaryLineMs = 0;
 static int summaryStep = 0;
 static int summaryLine = 0;  // -1 = the step's heading
 
@@ -314,12 +351,13 @@ static void finish() {
 }
 
 static void summaryUpdate() {
-  if (consolePending() > SUMMARY_MAX_PENDING) return;
+  if (millis() - lastSummaryLineMs < SUMMARY_LINE_MS) return;
+  lastSummaryLineMs = millis();
 
   if (summaryStep >= STEP_COUNT) {
     console.println("================== END OF SUMMARY =====================");
     console.println();
-    console.println("Signal finder ended. t = run it again, i = ID table, l = live on/off.");
+    console.println("Signal finder ended. Send t to run it again.");
     state = OFF;
     return;
   }
@@ -415,7 +453,7 @@ static void nextPhase() {
 }
 
 static void beginStep() {
-  if (idCount == 0) {
+  if (seenCount == 0) {
     console.println("No CAN frames seen yet. Turn the ignition on, then press Enter.");
     return;
   }
@@ -432,9 +470,9 @@ static void skipStep() {
   showStep();
 }
 
-// ---------- Public functions -------------------------------------------------
+// ---------- Start, frames, input, timing -------------------------------------------------
 
-void finderStart() {
+static void finderStart() {
   for (int i = 0; i < STEP_COUNT; i++) {
     results[i] = StepResult{};
   }
@@ -452,12 +490,23 @@ void finderStart() {
   showStep();
 }
 
-bool finderActive() {
-  return state != OFF;
-}
+static void onFrame(const twai_message_t &msg) {
+  if (msg.rtr) return;  // remote frames carry no data
 
-void finderOnFrame(int slot, const twai_message_t &msg) {
-  if (slot < 0 || !(sampleRest || sampleAct || sampleAny)) return;
+  int slot = -1;
+  for (int i = 0; i < seenCount; i++) {
+    if (seenIds[i] == msg.identifier) {
+      slot = i;
+      break;
+    }
+  }
+  if (slot < 0) {
+    if (seenCount >= MAX_IDS) return;  // table full: this ID is not analysed
+    slot = seenCount++;
+    seenIds[slot] = msg.identifier;
+  }
+
+  if (!(sampleRest || sampleAct || sampleAny)) return;
 
   Stat &s = stats[slot];
   int length = min((int)msg.data_length_code, 8);
@@ -492,8 +541,12 @@ void finderOnFrame(int slot, const twai_message_t &msg) {
   }
 }
 
-void finderInput(int c) {
-  if (state == OFF || state == SUMMARY || c == 0) return;
+static void finderInput(int c) {
+  if (state == SUMMARY || c == 0) return;
+  if (state == OFF) {
+    if (c == 't') finderStart();
+    return;
+  }
 
   uint32_t now = millis();
   bool enter = (c == '\r' || c == '\n');
@@ -523,7 +576,7 @@ void finderInput(int c) {
   }
 }
 
-void finderUpdate() {
+static void finderUpdate() {
   if (state == SUMMARY) {
     summaryUpdate();
     return;
@@ -546,5 +599,56 @@ void finderUpdate() {
 
   if (elapsed >= settleMs + sampleMs) {
     nextPhase();
+  }
+}
+
+// ---------- Program ----------------------------------------------------------
+
+static const uint32_t IDLE_HINT_MS = 5000;
+static uint32_t lastHintMs = 0;
+
+void setup() {
+  consoleSetup();
+  console.println("KTM 390 signal finder (test firmware), listen-only");
+
+  // Listen-only: the controller never transmits and never sends ACK or error
+  // frames. Same settings as the main program.
+  twai_general_config_t generalConfig =
+      TWAI_GENERAL_CONFIG_DEFAULT(CAN_TX_PIN, CAN_RX_PIN, TWAI_MODE_LISTEN_ONLY);
+  generalConfig.tx_queue_len = 0;
+  generalConfig.rx_queue_len = 256;
+  twai_timing_config_t timingConfig = TWAI_TIMING_CONFIG_500KBITS();
+  twai_filter_config_t filterConfig = TWAI_FILTER_CONFIG_ACCEPT_ALL();
+
+  if (twai_driver_install(&generalConfig, &timingConfig, &filterConfig) != ESP_OK ||
+      twai_start() != ESP_OK) {
+    console.println("TWAI start failed. Check the board selection and pins.");
+    while (true) {
+      delay(1000);
+    }
+  }
+}
+
+void loop() {
+  twai_message_t msg;
+  if (twai_receive(&msg, pdMS_TO_TICKS(2)) == ESP_OK) {
+    do {
+      onFrame(msg);
+    } while (twai_receive(&msg, 0) == ESP_OK);
+  }
+
+  consoleUpdate();
+
+  int c;
+  while ((c = console.read()) >= 0) {
+    finderInput(c);
+  }
+  finderUpdate();
+
+  // The console's own greeting names the main program's commands, so keep
+  // saying what this firmware wants until the test is started.
+  if (state == OFF && millis() - lastHintMs >= IDLE_HINT_MS) {
+    lastHintMs = millis();
+    console.printf("Signal finder ready, %d CAN IDs seen. Send t to start.\n", seenCount);
   }
 }

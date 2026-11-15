@@ -8,7 +8,6 @@
     can_bus    TWAI driver, frame decoding, table of every CAN ID
     serial_ui  Serial Monitor output and commands
     console    output to USB serial and to a telnet client over Wi-Fi
-    signal_finder  guided test that finds the CAN code of each control
 
   THE CAN IDs ARE NOT CONFIRMED ON THE 2020 BIKE.
   They come from other KTMs:
@@ -21,8 +20,6 @@
   Serial Monitor commands (send the letter, then Enter):
     i  print every CAN ID seen. '*' marks bytes that changed since the last 'i'
     l  turn the live RPM/speed lines on or off
-    t  guided signal finder (signal_finder.cpp): tells you what to press on
-       the bike and reports the CAN ID, byte and bits that follow it
 
   Wireless: the board runs a Wi-Fi network "KTM390-CAN" (password in
   console.h). Join it and telnet to 192.168.4.1 port 23 for the same output
@@ -59,7 +56,7 @@ void setup() {
     }
   }
 
-  console.println("Listening. Send i for the ID table, l for live on/off, t for the signal finder.");
+  console.println("Listening. Send i for the ID table, l for live on/off.");
   uiSetup();
 }
 

@@ -62,10 +62,6 @@ size_t Console::write(const uint8_t *buffer, size_t size) {
   return size;
 }
 
-size_t consolePending() {
-  return clientActive ? txLength : 0;
-}
-
 // ---------- Input ------------------------------------------------------------
 
 static int readTelnet() {
@@ -149,6 +145,6 @@ void consoleUpdate() {
     clientActive = true;
     telnetState = TEXT;
     console.println("[wifi] telnet client connected");
-    console.println("KTM 390 CAN reader. Send i for the ID table, l for live on/off, t for the signal finder.");
+    console.println("KTM 390 CAN reader. Send i for the ID table, l for live on/off.");
   }
 }

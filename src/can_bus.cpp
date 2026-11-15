@@ -1,7 +1,6 @@
 #include "can_bus.h"
 
 #include <string.h>
-#include "signal_finder.h"
 
 // 500 kbit/s is confirmed
 #define CAN_TIMING TWAI_TIMING_CONFIG_500KBITS()
@@ -47,10 +46,10 @@ static void decodeFrame(const twai_message_t &msg) {
       if (length >= 2) {
         rpm.set(be16(d, 0));
       }
-      if (length >= 3) {
+      if (length >= 3) {//D2 throttle posisition 0-254
         throttle.set(d[2]);
       }
-      if (length >= 4) {
+      if (length >= 4) {//D3 bit 4 - killswitch, bit 5 - startbutton
         killRun.set((d[3] & 0x08) ? 1 : 0);
         startButton.set((d[3] & 0x10) ? 1 : 0);
       }
@@ -75,6 +74,12 @@ static void decodeFrame(const twai_message_t &msg) {
       }
       break;
 
+    case 0x12D:  // D1-D2: rear wheel speed
+      if (msg.data_length_code >= 3) {
+        rear12D.set(be16(msg.data, 1) * SCALE_12D_KMH);
+      }
+      break;
+
     case 0x290:  // D0-D1: front brake pressure, D3: brake light
       if (length >= 2) {
         frontBrake.set(be16(d, 0));
@@ -91,19 +96,6 @@ static void decodeFrame(const twai_message_t &msg) {
       }
       break;
 
-    case 0x12B:  // D0-D1: front wheel, D2-D3: rear wheel
-      if (msg.data_length_code >= 4) {
-        front12B.set(be16(msg.data, 0) * SCALE_12B_KMH);
-        rear12B.set(be16(msg.data, 2) * SCALE_12B_KMH);
-      }
-      break;
-
-    case 0x12D:  // D1-D2: rear wheel
-      if (msg.data_length_code >= 3) {
-        rear12D.set(be16(msg.data, 1) * SCALE_12D_KMH);
-      }
-      break;
-
     case 0x540:  // D3 bit 0: side stand, D6-D7: coolant temperature, 0.1 C per count
       if (length >= 4) {
         sideStand.set(d[3] & 0x01);
@@ -115,8 +107,7 @@ static void decodeFrame(const twai_message_t &msg) {
   }
 }
 
-// Returns the frame's slot in idTable, or -1 if the table is full.
-static int updateIdTable(const twai_message_t &msg) {
+static void updateIdTable(const twai_message_t &msg) {
   int slot = -1;
   for (int i = 0; i < idCount; i++) {
     if (idTable[i].id == msg.identifier) {
@@ -128,7 +119,7 @@ static int updateIdTable(const twai_message_t &msg) {
   if (slot < 0) {
     if (idCount >= MAX_IDS) {
       idTableFull = true;
-      return -1;
+      return;
     }
     slot = idCount++;
     idTable[slot] = IdEntry{};
@@ -150,16 +141,14 @@ static int updateIdTable(const twai_message_t &msg) {
   memcpy(entry.data, msg.data, length);
   entry.dlc = length;
   entry.count++;
-  return slot;
 }
 
 static void handleFrame(const twai_message_t &msg) {
   if (msg.rtr) return;  // remote frames carry no data
 
   totalFrames++;
-  int slot = updateIdTable(msg);
+  updateIdTable(msg);
   decodeFrame(msg);
-  finderOnFrame(slot, msg);
 }
 
 // ---------- Public functions -------------------------------------------------
