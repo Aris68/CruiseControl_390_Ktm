@@ -1,6 +1,7 @@
 #include "serial_ui.h"
 
 #include <Arduino.h>
+#include <string.h>
 #include "can_bus.h"
 #include "console.h"
 
@@ -17,87 +18,90 @@ static uint32_t lastStatusMs = 0;
 static uint32_t lastTablePrintMs = 0;
 static bool liveOutput = true;
 
-static void printRpm() {
-  if (rpm.fresh()) {
-    console.printf("RPM %5.0f", rpm.value);
-  } else {
-    console.print("RPM    --");
-  }
+// Every field has a fixed width that fits the largest value its CAN bytes can
+// hold, and a stale value prints "--" in the same width. So every line of a
+// given kind is the same length, and columns line up from one line to the next.
+
+// Prints " | label text" with text right-aligned in width characters.
+static void printField(const char *label, const char *text, int width) {
+  console.printf(" | %s %*s", label, width, text);
 }
 
+// A numeric reading, formatted with fmt (e.g. "%.1f"), or "--" if stale.
+static void printValue(const char *label, const Reading &reading,
+                       const char *fmt, int width) {
+  char text[16] = "--";
+  if (reading.fresh()) snprintf(text, sizeof(text), fmt, reading.value);
+  printField(label, text, width);
+}
+
+static void printRpm() {
+  char text[8] = "--";
+  if (rpm.fresh()) snprintf(text, sizeof(text), "%.0f", rpm.value);
+  console.printf("RPM %5s", text);  // 16-bit: up to 65535
+}
+
+// Wheel speeds are 16-bit counts times a scale, so up to 6553.5 km/h.
 static void printSpeed(const char *label, const Reading &reading) {
-  if (reading.fresh()) {
-    console.printf(" | %s %5.1f", label, reading.value);
-  } else {
-    console.printf(" | %s    --", label);
-  }
+  printValue(label, reading, "%.1f", 6);
 }
 
 static void printCoolant() {
-  if (coolant.fresh()) {
-    console.printf(" | coolant %5.1f C", coolant.value);
-  } else {
-    console.print(" | coolant    --");
-  }
+  printValue("coolant", coolant, "%.1f", 6);  // 16-bit / 10: up to 6553.5
+  console.print(" C");
 }
 
-// Prints "label text", choosing the text by the switch state, or "--" if stale.
+// Prints the text for the switch state, or "--" if stale.
 static void printSwitch(const char *label, const Reading &reading,
                         const char *whenOne, const char *whenZero) {
-  if (reading.fresh()) {
-    console.printf(" | %s %s", label, reading.value != 0 ? whenOne : whenZero);
-  } else {
-    console.printf(" | %s --", label);
-  }
+  int width = max(max(strlen(whenOne), strlen(whenZero)), (size_t)2);
+  const char *text = "--";
+  if (reading.fresh()) text = reading.value != 0 ? whenOne : whenZero;
+  printField(label, text, width);
 }
 
 // For a byte with two known values. Anything else is printed in hex.
 static void printByteState(const char *label, const Reading &reading,
                            uint8_t onValue, uint8_t offValue) {
-  if (!reading.fresh()) {
-    console.printf(" | %s --", label);
-    return;
+  char text[8] = "--";
+  if (reading.fresh()) {
+    uint8_t raw = (uint8_t)reading.value;
+    if (raw == onValue) {
+      strcpy(text, "on");
+    } else if (raw == offValue) {
+      strcpy(text, "off");
+    } else {
+      snprintf(text, sizeof(text), "0x%02X", raw);
+    }
   }
-  uint8_t raw = (uint8_t)reading.value;
-  if (raw == onValue) {
-    console.printf(" | %s on", label);
-  } else if (raw == offValue) {
-    console.printf(" | %s off", label);
-  } else {
-    console.printf(" | %s 0x%02X", label, raw);
-  }
+  printField(label, text, 4);  // widest is "0xNN"
 }
 
-static void printNumber(const char *label, const Reading &reading) {
-  if (reading.fresh()) {
-    console.printf(" | %s %.0f", label, reading.value);
-  } else {
-    console.printf(" | %s --", label);
-  }
+static void printNumber(const char *label, const Reading &reading, int width) {
+  printValue(label, reading, "%.0f", width);
 }
 
 // Second live line: the high-certainty signals from CAN_CODES.md.
 static void printSignals() {
-  if (throttle.fresh()) {
-    console.printf("thr %3.0f", throttle.value);
-  } else {
-    console.print("thr  --");
-  }
+  char text[8] = "--";
+  if (throttle.fresh()) snprintf(text, sizeof(text), "%.0f", throttle.value);
+  console.printf("thr %3s", text);  // one byte: up to 255
   printSwitch("grip", throttleClosed, "closed", "open");
-  printNumber("gear", gear);
-  printNumber("clutch", clutch);  // raw bit: which state means "pulled" is not recorded
+  printNumber("gear", gear, 2);      // 4 bits: up to 15
+  printNumber("clutch", clutch, 2);  // raw bit: which state means "pulled" is not recorded
   printSwitch("kill", killRun, "RUN", "STOP");
   printSwitch("start", startButton, "pressed", "-");
   printByteState("TC", tractionControl, TC_ON, TC_OFF);
-  printNumber("brake", frontBrake);
+  printNumber("brake", frontBrake, 5);  // 16-bit: up to 65535
   printByteState("light", brakeLight, BRAKE_LIGHT_ON, BRAKE_LIGHT_OFF);
   printSwitch("stand", sideStand, "up", "down");
 
+  char odo[16] = "--";
   if (odometer.fresh(ODOMETER_STALE_MS)) {
-    console.printf(" | odo %.1f km", odometer.value);
-  } else {
-    console.print(" | odo --");
+    snprintf(odo, sizeof(odo), "%.1f", odometer.value);
   }
+  printField("odo", odo, 9);  // 24-bit / 10: up to 1677721.5
+  console.print(" km");
   console.println();
 }
 
@@ -112,6 +116,10 @@ static void printLive() {
   printSignals();
 }
 
+static unsigned long capped(uint32_t value, uint32_t limit) {
+  return (unsigned long)min(value, limit);
+}
+
 static void printStatus() {
   twai_status_info_t status;
   if (twai_get_status_info(&status) != ESP_OK) return;
@@ -121,19 +129,20 @@ static void printStatus() {
   framesAtLastStatus = totalFrames;
   busErrorsAtLastStatus = status.bus_error_count;
 
-  console.printf("[bus] %lu frames/s, %d IDs, bus errors %lu, lost %lu",
-                (unsigned long)(newFrames * 1000 / STATUS_PERIOD_MS), idCount,
-                (unsigned long)status.bus_error_count,
-                (unsigned long)(status.rx_missed_count + status.rx_overrun_count));
+  // Counters are capped so they never widen the line.
+  console.printf("[bus] %5lu frames/s, %2d IDs, bus errors %7lu, lost %7lu",
+                 capped(newFrames * 1000 / STATUS_PERIOD_MS, 99999), idCount,
+                 capped(status.bus_error_count, 9999999),
+                 capped(status.rx_missed_count + status.rx_overrun_count, 9999999));
 
+  const char *hint = "";
   if (newFrames == 0) {
-    if (newErrors > 0) {
-      console.print("  <- errors but no frames: check bitrate, CANH/CANL order, ground");
-    } else {
-      console.print("  <- bus silent: check ignition, wiring, CRX on GPIO3");
-    }
+    hint = (newErrors > 0)
+               ? "  <- errors but no frames: check bitrate, CANH/CANL order, ground"
+               : "  <- bus silent: check ignition, wiring, CRX on GPIO3";
   }
-  console.println();
+  // Padded to the longest hint, so the line length is the same with or without one.
+  console.printf("%-65s", hint);
 }
 
 static void printIdTable() {
@@ -150,10 +159,14 @@ static void printIdTable() {
     uint32_t newFrames = entry.count - entry.countAtLastPrint;
     uint32_t rate = (elapsedMs > 0) ? (newFrames * 1000 / elapsedMs) : 0;
 
-    console.printf("%03lX %4lu/s ", (unsigned long)entry.id, (unsigned long)rate);
-    for (int b = 0; b < entry.dlc; b++) {
-      bool changed = entry.changed & (1 << b);
-      console.printf("%02X%c ", entry.data[b], changed ? '*' : ' ');
+    console.printf("%03lX %4lu/s ", (unsigned long)entry.id, capped(rate, 9999));
+    for (int b = 0; b < 8; b++) {
+      if (b < entry.dlc) {
+        bool changed = entry.changed & (1 << b);
+        console.printf("%02X%c ", entry.data[b], changed ? '*' : ' ');
+      } else {
+        console.print("    ");  // short frame: pad to 8 bytes
+      }
     }
     console.println();
 
@@ -174,7 +187,7 @@ static void handleCommand() {
       printIdTable();
     } else if (command == 'l') {
       liveOutput = !liveOutput;
-      console.println(liveOutput ? "Live output on" : "Live output off");
+      console.println(liveOutput ? "Live output on " : "Live output off");
     }
   }
 }
@@ -184,15 +197,17 @@ void uiSetup() {
 }
 
 void uiUpdate() {
+
   handleCommand();
 
   uint32_t now = millis();
   if (liveOutput && now - lastLiveMs >= LIVE_PERIOD_MS) {
     lastLiveMs = now;
+    console.println();
     printLive();
   }
-  if (now - lastStatusMs >= STATUS_PERIOD_MS) {
-    lastStatusMs = now;
-    printStatus();
-  }
+  // if (now - lastStatusMs >= STATUS_PERIOD_MS) {
+  //   lastStatusMs = now;
+  //   printStatus();
+  // }
 }
