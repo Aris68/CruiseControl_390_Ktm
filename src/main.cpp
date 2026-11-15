@@ -2,24 +2,23 @@
   KTM 390 Adventure (2020) - passive CAN reader
   Board:       ESP32-C6-DevKitM-1
   Transceiver: SN65HVD230
-  Output:      RPM and wheel speed over Serial at 115200 baud
+  Output:      live line over Serial (115200 baud) and Wi-Fi telnet:
+               RPM, wheel speed, gear, clutch, TC, ABS mode, ride mode,
+               front/rear brake, side stand
 
   Files:
     can_bus    TWAI driver, frame decoding, table of every CAN ID
     serial_ui  Serial Monitor output and commands
     console    output to USB serial and to a telnet client over Wi-Fi
 
-  THE CAN IDs ARE NOT CONFIRMED ON THE 2020 BIKE.
-  They come from other KTMs:
-    0x120 RPM          690 Enduro R, 1390 Super Duke, 2026 Adventure 390 (confirmed)
-    0x12B wheel speed  690 Enduro R, 701 Enduro (not sent on the 2026 Adventure 390)
-    0x12D wheel speed  2026 Adventure 390 (scale is a guess)
-  Both speed candidates are decoded. If neither responds, use the ID table
-  (command 'i') to find the right frame, then edit decodeFrame() in can_bus.cpp.
+  CAN IDs and bits are listed in CAN_CODES.md. Wheel speed (0x12D) uses a
+  guessed scale: calibrate SCALE_12D_KMH in can_bus.h against GPS.
+  To find a new signal, use the ID table (command 'i'), then edit
+  decodeFrame() in can_bus.cpp.
 
   Serial Monitor commands (send the letter, then Enter):
     i  print every CAN ID seen. '*' marks bytes that changed since the last 'i'
-    l  turn the live RPM/speed lines on or off
+    l  turn the live line on or off
 
   Wireless: the board runs a Wi-Fi network "KTM390-CAN" (password in
   console.h). Join it and telnet to 192.168.4.1 port 23 for the same output

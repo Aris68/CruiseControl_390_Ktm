@@ -4,9 +4,8 @@
 #include "can_bus.h"
 #include "console.h"
 
-static const uint32_t LIVE_PERIOD_MS    = 200;    // live lines, 5 per second
-static const uint32_t STATUS_PERIOD_MS  = 20000;  // bus health line
-static const uint32_t ODOMETER_STALE_MS = 50000;  // 0x55A is a slow frame
+static const uint32_t LIVE_PERIOD_MS   = 200;    // live line, 5 per second
+static const uint32_t STATUS_PERIOD_MS = 20000;  // bus health line
 
 static uint32_t lastLiveMs = 0;
 static uint32_t lastStatusMs = 0;
@@ -15,54 +14,39 @@ static uint32_t framesAtLastStatus = 0;
 static uint32_t busErrorsAtLastStatus = 0;
 static bool liveOutput = true;
 
-// ---------- Live lines -------------------------------------------------------
+// ---------- Live line --------------------------------------------------------
 
-enum Format { WHOLE, ONE_DECIMAL, HEX_BYTE };
-
-// One value on a live line. width fits the largest value the CAN bytes can
-// hold, so a line is always the same length and the columns line up.
+// One value on the live line. width fits the largest value the CAN bytes can
+// hold, so the line is always the same length and the columns line up.
 struct Field {
   const char *label;
   const Reading &reading;
-  Format format;
+  int decimals;
   int width;
   const char *unit;
-  uint32_t staleMs;
 };
 
-static const Field ENGINE_LINE[] = {
-  {"RPM",      rpm,     WHOLE,       5, "",      STALE_MS},  // 16-bit
-  {"12D rear", rear12D, ONE_DECIMAL, 6, " km/h", STALE_MS},  // 16-bit x scale
-  {"coolant",  coolant, ONE_DECIMAL, 6, " C",    STALE_MS},  // 16-bit / 10
-};
-
-static const Field SIGNAL_LINE[] = {
-  {"thr",    throttle,        WHOLE,       3, "",    STALE_MS},           // byte
-  {"grip",   throttleClosed,  WHOLE,       2, "",    STALE_MS},           // bit
-  {"clutch", clutch,          WHOLE,       2, "",    STALE_MS},           // bit
-  {"kill",   killRun,         WHOLE,       2, "",    STALE_MS},           // bit
-  {"start",  startButton,     WHOLE,       2, "",    STALE_MS},           // bit
-  {"stand",  sideStand,       WHOLE,       2, "",    STALE_MS},           // bit
-  {"TC",     tractionControl, HEX_BYTE,    4, "",    STALE_MS},           // byte
-  {"light",  brakeLight,      HEX_BYTE,    4, "",    STALE_MS},           // byte
-  {"gear",   gear,            WHOLE,       2, "",    STALE_MS},           // 4 bits
-  {"brake",  frontBrake,      WHOLE,       5, "",    STALE_MS},           // 16-bit
-  {"odo",    odometer,        ONE_DECIMAL, 9, " km", ODOMETER_STALE_MS},  // 24-bit / 10
+// Switches print their raw bit: 0 or 1.
+static const Field LIVE_LINE[] = {
+  {"RPM",    rpm,             0, 5, ""},       // 16-bit
+  {"speed",  wheelSpeed,      1, 6, " km/h"},  // 16-bit x scale
+  {"gear",   gear,            0, 2, ""},       // 4 bits
+  {"clutch", clutch,          0, 2, ""},       // 1 = pulled
+  {"TC",     tractionControl, 0, 2, ""},       // 1 = on
+  {"ABS",    absOffroad,      0, 2, ""},       // 1 = offroad
+  {"mode",   rideOffroad,     0, 2, ""},       // 1 = offroad
+  {"fBrake", frontBrake,      0, 2, ""},       // 1 = pressed
+  {"rBrake", rearBrake,       0, 2, ""},       // 1 = pressed
+  {"stand",  sideStand,       0, 2, ""},       // 1 = up
 };
 
 // Prints the fields separated by " | ". A stale value prints as "--".
-template <size_t N>
-static void printLine(const Field (&fields)[N]) {
-  for (size_t i = 0; i < N; i++) {
-    const Field &f = fields[i];
+static void printLive() {
+  const size_t count = sizeof(LIVE_LINE) / sizeof(LIVE_LINE[0]);
+  for (size_t i = 0; i < count; i++) {
+    const Field &f = LIVE_LINE[i];
     char text[16] = "--";
-    if (f.reading.fresh(f.staleMs)) {
-      if (f.format == HEX_BYTE) {
-        snprintf(text, sizeof(text), "0x%02X", (unsigned)f.reading.value);
-      } else {
-        snprintf(text, sizeof(text), f.format == WHOLE ? "%.0f" : "%.1f", f.reading.value);
-      }
-    }
+    if (f.reading.fresh()) snprintf(text, sizeof(text), "%.*f", f.decimals, f.reading.value);
     console.printf("%s%s %*s%s", i > 0 ? " | " : "", f.label, f.width, text, f.unit);
   }
   console.println();
@@ -154,8 +138,7 @@ void uiUpdate() {
   if (liveOutput && now - lastLiveMs >= LIVE_PERIOD_MS) {
     lastLiveMs = now;
     console.println();
-    printLine(ENGINE_LINE);
-    printLine(SIGNAL_LINE);
+    printLive();
   }
   if (now - lastStatusMs >= STATUS_PERIOD_MS) {
     lastStatusMs = now;

@@ -13,9 +13,9 @@
 const gpio_num_t CAN_TX_PIN = GPIO_NUM_2;
 const gpio_num_t CAN_RX_PIN = GPIO_NUM_3;
 
-// Starting values. Calibrate against GPS at a steady speed:
+// Starting value. Calibrate against GPS at a steady speed:
 //   new scale = old scale * (GPS speed / printed speed)
-const float SCALE_12D_KMH = 0.1f;      // 2026 Adventure 390: a guess
+const float SCALE_12D_KMH = 0.1f;  // 2026 Adventure 390: a guess
 
 const uint32_t STALE_MS = 500;  // a value older than this is not fresh
 const int      MAX_IDS  = 64;   // size of the ID table
@@ -40,21 +40,17 @@ struct Reading {
   }
 };
 
-extern Reading rpm;
-extern Reading rear12D;
-extern Reading coolant;
-extern Reading throttle;         // 0x120 D2: 0 closed .. 253 open
-extern Reading killRun;          // 0x120 D3 bit 0x08: 1 = RUN
-extern Reading startButton;      // 0x120 D3 bit 0x10: 1 while pressed
-extern Reading throttleClosed;   // 0x128 D2 bit 0x01: 1 = grip closed
+// See CAN_CODES.md. Switch bits hold 0 or 1.
+extern Reading rpm;              // 0x120 D0-D1, rpm
+extern Reading wheelSpeed;       // 0x12D D1-D2, km/h (rear wheel)
 extern Reading gear;             // 0x129 D0 bits 4-7
-extern Reading clutch;           // 0x129 D0 bit 0x08, raw bit
-extern Reading tractionControl;  // 0x12A D1, raw byte: TC_ON or TC_OFF
-extern Reading frontBrake;       // 0x290 D0-D1, raw pressure counts
-extern Reading brakeLight;       // 0x290 D3, raw byte: BRAKE_LIGHT_ON or _OFF
+extern Reading clutch;           // 0x129 D0 bit 0x08: 1 = pulled
+extern Reading tractionControl;  // 0x12A D1 bit 0x20: 1 = on
+extern Reading absOffroad;       // 0x12A D2 bit 0x02: 1 = offroad ABS
+extern Reading rideOffroad;      // 0x12A D4 bit 0x20: 1 = offroad ride mode
+extern Reading frontBrake;       // 0x290 D0: 1 = pressed (pressure above 0)
+extern Reading rearBrake;        // 0x12F D1 bit 0x40: 1 = pressed
 extern Reading sideStand;        // 0x540 D3 bit 0x01: 1 = up
-extern Reading odometer;         // 0x55A D0-D2, km
-
 
 // ---------- Table of every ID on the bus -------------------------------------
 
